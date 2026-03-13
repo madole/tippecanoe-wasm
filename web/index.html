@@ -193,10 +193,10 @@
       <div class="section-label">Input</div>
       <div class="dropzone" id="dropzone">
         <div class="dropzone-icon" id="dropzone-icon">&#128196;</div>
-        <div class="dropzone-text" id="dropzone-text">Drop GeoJSON here or <a id="browse-link">browse</a></div>
+        <div class="dropzone-text" id="dropzone-text">Drop GeoJSON, CSV, or FlatGeobuf here or <a id="browse-link">browse</a></div>
         <div class="dropzone-file" id="file-info" style="display:none"></div>
       </div>
-      <input type="file" id="file-input" accept=".geojson,.json,.geojsonl,.geojsonld,.ndjson" style="display:none">
+      <input type="file" id="file-input" accept=".geojson,.json,.geojsonl,.geojsonld,.ndjson,.csv,.fgb,.json.gz,.geojson.gz" style="display:none">
     </div>
 
     <!-- Output format -->
@@ -357,7 +357,7 @@
 
       var layerInput = document.getElementById('layer-name');
       if (!layerInput.value) {
-        layerInput.placeholder = file.name.replace(/\.(geo)?json(l|ld)?$/i, '');
+        layerInput.placeholder = file.name.replace(/\.(geo)?json(\.gz|l|ld)?$|\.ndjson$|\.csv$|\.fgb$/i, '');
       }
     };
     reader.readAsArrayBuffer(file);
@@ -466,10 +466,11 @@
       }
     };
 
-    var geojsonCopy = new Uint8Array(inputBytes);
+    var inputCopy = new Uint8Array(inputBytes);
+    var inputName = inputFile ? inputFile.name : 'input.geojson';
     tippWorker.postMessage(
-      { type: 'run', geojson: geojsonCopy, args: buildArgs(), outputFormat: outputFormat },
-      [geojsonCopy.buffer]
+      { type: 'run', inputData: inputCopy, inputName: inputName, args: buildArgs(), outputFormat: outputFormat },
+      [inputCopy.buffer]
     );
   }
 
@@ -653,7 +654,40 @@
   // ---- Fit map to data bounds ----
   function fitToData() {
     try {
+      var name = (inputFile ? inputFile.name : '').toLowerCase();
+      // FlatGeobuf is binary — skip extent fitting
+      if (name.endsWith('.fgb')) return;
+
       var text = new TextDecoder().decode(inputBytes);
+
+      // CSV: parse lat/lon columns for bounds
+      if (name.endsWith('.csv')) {
+        var lines = text.trim().split('\n');
+        if (lines.length < 2) return;
+        var headers = lines[0].split(',').map(function(h) { return h.trim().toLowerCase(); });
+        var latIdx = -1, lonIdx = -1;
+        var latNames = ['latitude', 'lat', 'y'];
+        var lonNames = ['longitude', 'lon', 'long', 'lng', 'x'];
+        for (var h = 0; h < headers.length; h++) {
+          if (latIdx < 0 && latNames.indexOf(headers[h]) >= 0) latIdx = h;
+          if (lonIdx < 0 && lonNames.indexOf(headers[h]) >= 0) lonIdx = h;
+        }
+        if (latIdx < 0 || lonIdx < 0) return;
+        var coords = [];
+        for (var r = 1; r < Math.min(lines.length, 1000); r++) {
+          var cols = lines[r].split(',');
+          var lat = parseFloat(cols[latIdx]), lon = parseFloat(cols[lonIdx]);
+          if (!isNaN(lat) && !isNaN(lon)) coords.push(ol.proj.fromLonLat([lon, lat]));
+        }
+        if (coords.length > 0) {
+          var extent = ol.extent.createEmpty();
+          for (var c = 0; c < coords.length; c++) ol.extent.extend(extent, [coords[c][0], coords[c][1], coords[c][0], coords[c][1]]);
+          map.getView().fit(extent, { padding: [50, 50, 50, 50], maxZoom: 14, duration: 500 });
+        }
+        return;
+      }
+
+      // GeoJSON or newline-delimited GeoJSON
       var features;
       if (text.trim().charAt(0) === '{') {
         var geojson = JSON.parse(text);
@@ -687,7 +721,7 @@
     if (!outputBlob) return;
     var ext = outputFormat === 'pmtiles' ? '.pmtiles' : '.mbtiles';
     var baseName = inputFile
-      ? inputFile.name.replace(/\.(geo)?json(l|ld)?$/i, '')
+      ? inputFile.name.replace(/\.(geo)?json(\.gz|l|ld)?$|\.ndjson$|\.csv$|\.fgb$/i, '')
       : 'output';
     var a = document.createElement('a');
     a.href = URL.createObjectURL(outputBlob);
