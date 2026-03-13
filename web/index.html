@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tippecanoe WASM</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@10.5.0/ol.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #21262d;
+    --border: #30363d;
+    --text-primary: #f0f6fc;
+    --text-secondary: #c9d1d9;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --accent-bg: #1f6feb;
+    --green: #238636;
+    --green-text: #3fb950;
+    --red: #f85149;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --mono: 'SF Mono', 'Fira Code', 'Fira Mono', Menlo, monospace;
+  }
+  html, body { height: 100%; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font); font-size: 14px; overflow: hidden; }
+
+  .app { display: flex; height: 100vh; }
+
+  /* ---- Sidebar ---- */
+  .sidebar {
+    width: 360px; min-width: 360px;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow-y: auto;
+  }
+  .sidebar-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    font-size: 16px; font-weight: 600;
+    color: var(--text-primary);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .sidebar-header .badge {
+    font-size: 10px; font-weight: 500;
+    color: var(--accent);
+    background: rgba(31,111,235,0.15);
+    padding: 2px 6px; border-radius: 4px;
+    font-family: var(--mono);
+  }
+  .section { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  .section-label {
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-muted); margin-bottom: 10px;
+  }
+
+  /* Drop zone */
+  .dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 24px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .dropzone:hover, .dropzone.dragover {
+    border-color: var(--accent);
+    background: rgba(56,139,253,0.05);
+  }
+  .dropzone.loaded {
+    border-color: var(--green-text);
+    border-style: solid;
+    background: rgba(35,134,54,0.08);
+  }
+  .dropzone-icon { font-size: 24px; margin-bottom: 8px; }
+  .dropzone-text { color: var(--text-muted); font-size: 12px; }
+  .dropzone-text a { color: var(--accent); cursor: pointer; }
+  .dropzone-file { color: var(--green-text); font-family: var(--mono); font-size: 12px; margin-top: 6px; }
+  .dropzone-file .size { color: var(--text-muted); }
+
+  /* Format toggle */
+  .format-toggle { display: flex; gap: 4px; }
+  .format-btn {
+    flex: 1; padding: 8px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--bg-tertiary);
+    color: var(--text-muted); font-size: 13px; font-weight: 500;
+    cursor: pointer; text-align: center; transition: all 0.15s;
+    font-family: var(--mono);
+  }
+  .format-btn.active {
+    background: var(--accent-bg); color: #fff;
+    border-color: var(--accent-bg);
+  }
+
+  /* Sliders */
+  .slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .slider-label { width: 32px; font-size: 12px; color: var(--text-muted); }
+  .slider-value { width: 24px; font-size: 13px; color: var(--text-primary); font-family: var(--mono); text-align: right; }
+  input[type="range"] {
+    flex: 1; -webkit-appearance: none; appearance: none;
+    height: 4px; background: var(--border); border-radius: 2px; outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent); cursor: pointer;
+  }
+
+  /* Checkboxes */
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer; font-size: 13px; }
+  .checkbox-row input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; }
+
+  /* Layer name */
+  .text-input {
+    width: 100%; padding: 8px 12px;
+    background: var(--bg-primary); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text-primary);
+    font-size: 13px; font-family: var(--mono); outline: none;
+  }
+  .text-input::placeholder { color: var(--text-muted); }
+  .text-input:focus { border-color: var(--accent); }
+
+  /* Buttons */
+  .btn-generate {
+    width: 100%; padding: 10px;
+    background: var(--green); color: #fff;
+    border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .btn-generate:hover { background: #2ea043; }
+  .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-generate.processing { background: var(--accent-bg); }
+
+  .btn-download {
+    width: 100%; padding: 8px;
+    background: var(--bg-tertiary); color: var(--text-secondary);
+    border: 1px solid var(--border); border-radius: 8px;
+    font-size: 13px; font-weight: 500;
+    cursor: pointer; margin-top: 8px; display: none;
+  }
+  .btn-download:hover { background: var(--border); }
+
+  /* Progress log */
+  .progress-log {
+    max-height: 120px; overflow-y: auto;
+    background: var(--bg-primary); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text-muted); line-height: 1.5;
+    display: none; margin-top: 10px;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  .progress-log.visible { display: block; }
+
+  /* ---- Map area ---- */
+  .map-container { flex: 1; display: flex; flex-direction: column; position: relative; }
+  #map { flex: 1; background: var(--bg-primary); }
+  .status-bar {
+    height: 32px; background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px;
+    font-size: 12px; font-family: var(--mono); color: var(--text-muted);
+  }
+  .status-bar .status-ok { color: var(--green-text); }
+
+  /* Empty state overlay */
+  .map-empty {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 32px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: var(--text-muted); pointer-events: none;
+    z-index: 1;
+  }
+  .map-empty.hidden { display: none; }
+  .map-empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
+  .map-empty-text { font-size: 14px; opacity: 0.6; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      tippecanoe <span class="badge">WASM</span>
+    </div>
+
+    <!-- File upload -->
+    <div class="section">
+      <div class="section-label">Input</div>
+      <div class="dropzone" id="dropzone">
+        <div class="dropzone-icon" id="dropzone-icon">&#128196;</div>
+        <div class="dropzone-text" id="dropzone-text">Drop GeoJSON here or <a id="browse-link">browse</a></div>
+        <div class="dropzone-file" id="file-info" style="display:none"></div>
+      </div>
+      <input type="file" id="file-input" accept=".geojson,.json,.geojsonl,.geojsonld,.ndjson" style="display:none">
+    </div>
+
+    <!-- Output format -->
+    <div class="section">
+      <div class="section-label">Output Format</div>
+      <div class="format-toggle">
+        <div class="format-btn active" data-format="pmtiles">PMTiles</div>
+        <div class="format-btn" data-format="mbtiles">MBTiles</div>
+      </div>
+    </div>
+
+    <!-- Zoom range -->
+    <div class="section">
+      <div class="section-label">Zoom Range</div>
+      <div class="slider-row">
+        <span class="slider-label">Min</span>
+        <input type="range" id="zoom-min" min="0" max="14" value="0">
+        <span class="slider-value" id="zoom-min-val">0</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-label">Max</span>
+        <input type="range" id="zoom-max" min="0" max="14" value="8">
+        <span class="slider-value" id="zoom-max-val">8</span>
+      </div>
+    </div>
+
+    <!-- Options -->
+    <div class="section">
+      <div class="section-label">Options</div>
+      <label class="checkbox-row">
+        <input type="checkbox" id="opt-no-feature-limit" checked> No feature limit (keep all points)
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="opt-no-tile-limit" checked> No tile size limit
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="opt-drop"> Drop fraction of points as needed
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="opt-coalesce"> Coalesce densest as needed
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="opt-simplify"> Simplify at lower zooms
+      </label>
+    </div>
+
+    <!-- Layer name -->
+    <div class="section">
+      <div class="section-label">Layer Name</div>
+      <input type="text" class="text-input" id="layer-name" placeholder="auto (from filename)">
+    </div>
+
+    <!-- Generate -->
+    <div class="section" style="border-bottom:none; margin-top:auto;">
+      <button class="btn-generate" id="btn-generate" disabled>Generate Tiles</button>
+      <button class="btn-download" id="btn-download">Download</button>
+      <div class="progress-log" id="progress-log"></div>
+    </div>
+  </div>
+
+  <!-- Map -->
+  <div class="map-container">
+    <div class="map-empty" id="map-empty">
+      <div class="map-empty-icon">&#x1f5fa;&#xfe0f;</div>
+      <div class="map-empty-text">Upload GeoJSON and generate tiles to preview</div>
+    </div>
+    <div id="map"></div>
+    <div class="status-bar">
+      <span id="status-left">Ready</span>
+      <span id="status-right"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Dependencies from CDN -->
+<script src="https://cdn.jsdelivr.net/npm/ol@10.5.0/dist/ol.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pmtiles@4.3.0/dist/pmtiles.js"></script>
+<script>
+(function() {
+  // ---- State ----
+  var inputFile = null;
+  var inputBytes = null;
+  var outputBlob = null;
+  var outputFormat = 'pmtiles';
+  var tippWorker = null;
+  var mbtilesWorker = null;
+  var map = null;
+  var tileLayer = null;
+  var mbtilesRequestId = 0;
+  var mbtilesPendingRequests = {};
+
+  // ---- Map setup ----
+  map = new ol.Map({
+    target: 'map',
+    layers: [
+      new ol.layer.Tile({
+        source: new ol.source.XYZ({
+          url: 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+          attributions: '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+        }),
+      }),
+    ],
+    view: new ol.View({
+      center: ol.proj.fromLonLat([0, 20]),
+      zoom: 2,
+    }),
+    controls: ol.control.defaults.defaults().extend([
+      new ol.control.ScaleLine(),
+    ]),
+  });
+
+  // ---- DOM refs ----
+  var dropzone = document.getElementById('dropzone');
+  var fileInput = document.getElementById('file-input');
+  var fileInfo = document.getElementById('file-info');
+  var browseLink = document.getElementById('browse-link');
+  var btnGenerate = document.getElementById('btn-generate');
+  var btnDownload = document.getElementById('btn-download');
+  var progressLog = document.getElementById('progress-log');
+  var statusLeft = document.getElementById('status-left');
+  var statusRight = document.getElementById('status-right');
+  var mapEmpty = document.getElementById('map-empty');
+  var zoomMin = document.getElementById('zoom-min');
+  var zoomMax = document.getElementById('zoom-max');
+  var zoomMinVal = document.getElementById('zoom-min-val');
+  var zoomMaxVal = document.getElementById('zoom-max-val');
+
+  // ---- File handling ----
+  browseLink.addEventListener('click', function() { fileInput.click(); });
+  document.getElementById('dropzone-icon').addEventListener('click', function() { fileInput.click(); });
+
+  dropzone.addEventListener('dragover', function(e) { e.preventDefault(); dropzone.classList.add('dragover'); });
+  dropzone.addEventListener('dragleave', function() { dropzone.classList.remove('dragover'); });
+  dropzone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', function() { if (fileInput.files.length > 0) handleFile(fileInput.files[0]); });
+
+  function formatSize(bytes) {
+    if (bytes > 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    return (bytes / 1024).toFixed(1) + ' KB';
+  }
+
+  function handleFile(file) {
+    inputFile = file;
+    var reader = new FileReader();
+    reader.onload = function() {
+      inputBytes = new Uint8Array(reader.result);
+      dropzone.classList.add('loaded');
+      fileInfo.innerHTML = file.name + ' <span class="size">(' + formatSize(inputBytes.byteLength) + ')</span>';
+      fileInfo.style.display = 'block';
+      document.getElementById('dropzone-text').style.display = 'none';
+      document.getElementById('dropzone-icon').textContent = '\u2705';
+      btnGenerate.disabled = false;
+      statusLeft.textContent = 'File loaded: ' + file.name;
+
+      var layerInput = document.getElementById('layer-name');
+      if (!layerInput.value) {
+        layerInput.placeholder = file.name.replace(/\.(geo)?json(l|ld)?$/i, '');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  // ---- Format toggle ----
+  var formatBtns = document.querySelectorAll('.format-btn');
+  for (var i = 0; i < formatBtns.length; i++) {
+    formatBtns[i].addEventListener('click', function() {
+      for (var j = 0; j < formatBtns.length; j++) formatBtns[j].classList.remove('active');
+      this.classList.add('active');
+      outputFormat = this.getAttribute('data-format');
+    });
+  }
+
+  // ---- Slider sync ----
+  zoomMin.addEventListener('input', function() {
+    zoomMinVal.textContent = zoomMin.value;
+    if (parseInt(zoomMin.value) > parseInt(zoomMax.value)) {
+      zoomMax.value = zoomMin.value;
+      zoomMaxVal.textContent = zoomMax.value;
+    }
+  });
+  zoomMax.addEventListener('input', function() {
+    zoomMaxVal.textContent = zoomMax.value;
+    if (parseInt(zoomMax.value) < parseInt(zoomMin.value)) {
+      zoomMin.value = zoomMax.value;
+      zoomMinVal.textContent = zoomMin.value;
+    }
+  });
+
+  // ---- Build CLI args ----
+  function buildArgs() {
+    var args = [];
+    args.push('-z', zoomMax.value);
+    args.push('-Z', zoomMin.value);
+
+    if (document.getElementById('opt-no-feature-limit').checked) args.push('--no-feature-limit');
+    if (document.getElementById('opt-no-tile-limit').checked) args.push('--no-tile-size-limit');
+    if (document.getElementById('opt-drop').checked) args.push('-as');
+    if (document.getElementById('opt-coalesce').checked) args.push('--coalesce-densest-as-needed');
+    if (document.getElementById('opt-simplify').checked) args.push('--simplification=10');
+
+    var layerName = document.getElementById('layer-name').value.trim();
+    if (layerName) args.push('-l', layerName);
+
+    return args;
+  }
+
+  // ---- Generate ----
+  btnGenerate.addEventListener('click', runGenerate);
+
+  function runGenerate() {
+    if (!inputBytes) return;
+
+    btnGenerate.disabled = true;
+    btnGenerate.textContent = 'Processing...';
+    btnGenerate.classList.add('processing');
+    btnDownload.style.display = 'none';
+    progressLog.textContent = '';
+    progressLog.classList.add('visible');
+    statusLeft.textContent = 'Processing...';
+    statusRight.textContent = '';
+    outputBlob = null;
+
+    if (tileLayer) {
+      map.removeLayer(tileLayer);
+      tileLayer = null;
+    }
+
+    if (tippWorker) tippWorker.terminate();
+    tippWorker = new Worker('tippecanoe-worker.js');
+
+    tippWorker.onmessage = function(e) {
+      var msg = e.data;
+
+      if (msg.type === 'progress') {
+        progressLog.textContent += msg.message + '\n';
+        progressLog.scrollTop = progressLog.scrollHeight;
+      }
+
+      if (msg.type === 'done') {
+        var mimeType = msg.format === 'pmtiles' ? 'application/x-pmtiles' : 'application/x-sqlite3';
+        outputBlob = new Blob([msg.output], { type: mimeType });
+
+        btnGenerate.disabled = false;
+        btnGenerate.textContent = 'Generate Tiles';
+        btnGenerate.classList.remove('processing');
+        btnDownload.style.display = 'block';
+        statusLeft.innerHTML = '<span class="status-ok">&#10003;</span> Generated ' + formatSize(outputBlob.size);
+        statusRight.textContent = 'z' + zoomMin.value + '\u2013z' + zoomMax.value + ' \u00b7 ' + outputFormat.toUpperCase();
+
+        if (msg.format === 'pmtiles') {
+          showPMTilesPreview(msg.output);
+        } else {
+          showMBTilesPreview(msg.output);
+        }
+      }
+
+      if (msg.type === 'error') {
+        btnGenerate.disabled = false;
+        btnGenerate.textContent = 'Generate Tiles';
+        btnGenerate.classList.remove('processing');
+        statusLeft.innerHTML = '<span style="color:var(--red)">Error:</span> ' + msg.message;
+        progressLog.textContent += '\nERROR: ' + msg.message;
+      }
+    };
+
+    var geojsonCopy = new Uint8Array(inputBytes);
+    tippWorker.postMessage(
+      { type: 'run', geojson: geojsonCopy, args: buildArgs(), outputFormat: outputFormat },
+      [geojsonCopy.buffer]
+    );
+  }
+
+  // ---- Decompress gzipped tile data ----
+  function decompressTile(data) {
+    // Check for gzip magic bytes (0x1f, 0x8b)
+    if (data.length < 2 || data[0] !== 0x1f || data[1] !== 0x8b) {
+      return Promise.resolve(data);
+    }
+    try {
+      var ds = new DecompressionStream('gzip');
+      var blob = new Blob([data]);
+      var decompressedStream = blob.stream().pipeThrough(ds);
+      return new Response(decompressedStream).arrayBuffer().then(function(buf) {
+        return new Uint8Array(buf);
+      }).catch(function() {
+        return data;
+      });
+    } catch (e) {
+      return Promise.resolve(data);
+    }
+  }
+
+  // ---- Create a VectorTile layer from a tile-fetching function ----
+  function createVectorTileLayer(getTileFn) {
+    var minZ = parseInt(zoomMin.value);
+    var maxZ = parseInt(zoomMax.value);
+
+    var source = new ol.source.VectorTile({
+      format: new ol.format.MVT(),
+      minZoom: minZ,
+      maxZoom: maxZ,
+      tileUrlFunction: function(coord) {
+        return coord[0] + '/' + coord[1] + '/' + coord[2];
+      },
+      tileLoadFunction: function(tile, url) {
+        var parts = url.split('/');
+        var z = parseInt(parts[0]);
+        var x = parseInt(parts[1]);
+        var y = parseInt(parts[2]);
+        tile.setLoader(function(extent, resolution, projection) {
+          getTileFn(z, x, y).then(function(data) {
+            if (data && data.byteLength > 0) {
+              decompressTile(data).then(function(decompressed) {
+                var format = tile.getFormat();
+                // Ensure we pass a standalone ArrayBuffer (not a shared/offset view)
+                var buf = decompressed.buffer.byteLength === decompressed.byteLength
+                  ? decompressed.buffer
+                  : decompressed.slice().buffer;
+                var features = format.readFeatures(buf, {
+                  extent: extent,
+                  featureProjection: projection,
+                });
+                tile.setFeatures(features);
+              }).catch(function(err) {
+                console.warn('Tile parse error z=' + z + ' x=' + x + ' y=' + y, err);
+                tile.setFeatures([]);
+              });
+            } else {
+              tile.setFeatures([]);
+            }
+          });
+        });
+      },
+    });
+
+    return new ol.layer.VectorTile({
+      source: source,
+      style: createTileStyle(),
+      declutter: true,
+    });
+  }
+
+  // ---- PMTiles preview ----
+  var pmtilesInstance = null;
+
+  function showPMTilesPreview(data) {
+    mapEmpty.classList.add('hidden');
+
+    // Use FileSource with a Blob for reliable in-memory byte-range access
+    // (FetchSource + Blob URL doesn't reliably support HTTP Range headers)
+    var blob = new Blob([data]);
+    blob.name = 'output.pmtiles';
+    pmtilesInstance = new pmtiles.PMTiles(new pmtiles.FileSource(blob));
+
+    function getPMTile(z, x, y) {
+      return pmtilesInstance.getZxy(z, x, y).then(function(result) {
+        if (result && result.data) {
+          return new Uint8Array(result.data);
+        }
+        return null;
+      });
+    }
+
+    tileLayer = createVectorTileLayer(getPMTile);
+    map.addLayer(tileLayer);
+    fitToData();
+  }
+
+  // ---- MBTiles preview ----
+  function showMBTilesPreview(data) {
+    mapEmpty.classList.add('hidden');
+
+    if (mbtilesWorker) mbtilesWorker.terminate();
+    mbtilesWorker = new Worker('mbtiles-worker.js');
+    mbtilesPendingRequests = {};
+
+    mbtilesWorker.onmessage = function(e) {
+      var msg = e.data;
+      if (msg.type === 'loaded') {
+        tileLayer = createVectorTileLayer(requestMBTile);
+        map.addLayer(tileLayer);
+        fitToData();
+      }
+      if (msg.type === 'tile') {
+        var resolve = mbtilesPendingRequests[msg.requestId];
+        if (resolve) {
+          delete mbtilesPendingRequests[msg.requestId];
+          resolve(msg.data);
+        }
+      }
+    };
+
+    mbtilesWorker.postMessage({ type: 'load', data: new Uint8Array(data) });
+  }
+
+  function requestMBTile(z, x, y) {
+    return new Promise(function(resolve) {
+      var id = ++mbtilesRequestId;
+      mbtilesPendingRequests[id] = resolve;
+      mbtilesWorker.postMessage({ type: 'getTile', z: z, x: x, y: y, requestId: id });
+    });
+  }
+
+  // ---- Tile styling ----
+  function createTileStyle() {
+    var colors = ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff', '#79c0ff', '#56d364', '#e3b341'];
+    var colorIndex = 0;
+    var layerColors = {};
+
+    return function(feature) {
+      var layer = feature.get('layer') || 'default';
+      if (!layerColors[layer]) {
+        layerColors[layer] = colors[colorIndex % colors.length];
+        colorIndex++;
+      }
+      var color = layerColors[layer];
+      var geomType = feature.getGeometry().getType();
+
+      if (geomType === 'Point' || geomType === 'MultiPoint') {
+        return new ol.style.Style({
+          image: new ol.style.Circle({
+            radius: 4,
+            fill: new ol.style.Fill({ color: color }),
+            stroke: new ol.style.Stroke({ color: '#0d1117', width: 1 }),
+          }),
+        });
+      }
+      if (geomType === 'LineString' || geomType === 'MultiLineString') {
+        return new ol.style.Style({
+          stroke: new ol.style.Stroke({ color: color, width: 2 }),
+        });
+      }
+      var rgb = hexToRgb(color);
+      return new ol.style.Style({
+        stroke: new ol.style.Stroke({ color: color, width: 1 }),
+        fill: new ol.style.Fill({ color: 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.25)' }),
+      });
+    };
+  }
+
+  function hexToRgb(hex) {
+    var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16),
+    } : { r: 88, g: 166, b: 255 };
+  }
+
+  // ---- Fit map to data bounds ----
+  function fitToData() {
+    try {
+      var text = new TextDecoder().decode(inputBytes);
+      var features;
+      if (text.trim().charAt(0) === '{') {
+        var geojson = JSON.parse(text);
+        features = new ol.format.GeoJSON().readFeatures(geojson, {
+          featureProjection: 'EPSG:3857',
+        });
+      } else {
+        var lines = text.trim().split('\n').slice(0, 100);
+        features = [];
+        for (var i = 0; i < lines.length; i++) {
+          try {
+            var f = new ol.format.GeoJSON().readFeatures(JSON.parse(lines[i]), {
+              featureProjection: 'EPSG:3857',
+            });
+            features = features.concat(f);
+          } catch (ignored) {}
+        }
+      }
+      if (features.length > 0) {
+        var extent = ol.extent.createEmpty();
+        for (var k = 0; k < features.length; k++) {
+          ol.extent.extend(extent, features[k].getGeometry().getExtent());
+        }
+        map.getView().fit(extent, { padding: [50, 50, 50, 50], maxZoom: 14, duration: 500 });
+      }
+    } catch (ignored) {}
+  }
+
+  // ---- Download ----
+  btnDownload.addEventListener('click', function() {
+    if (!outputBlob) return;
+    var ext = outputFormat === 'pmtiles' ? '.pmtiles' : '.mbtiles';
+    var baseName = inputFile
+      ? inputFile.name.replace(/\.(geo)?json(l|ld)?$/i, '')
+      : 'output';
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(outputBlob);
+    a.download = baseName + ext;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+})();
+</script>
+</body>
+</html>

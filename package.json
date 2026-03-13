@@ -1,0 +1,27 @@
+{
+  "name": "tippecanoe-wasm",
+  "version": "0.1.0",
+  "description": "Tippecanoe compiled to WebAssembly — generate MBTiles from GeoJSON in Node.js",
+  "main": "wrapper/index.js",
+  "files": [
+    "tippecanoe/tippecanoe.js",
+    "tippecanoe/tippecanoe.wasm",
+    "wrapper/index.js"
+  ],
+  "scripts": {
+    "test": "node wrapper/test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "BSD-2-Clause",
+  "keywords": [
+    "tippecanoe",
+    "mbtiles",
+    "vector-tiles",
+    "geojson",
+    "wasm",
+    "webassembly",
+    "mapbox"
+  ]
+}

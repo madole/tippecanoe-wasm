@@ -1,0 +1,65 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [151.2093, -33.8688] },
+      "properties": { "name": "Sydney", "population": 5312000 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [144.9631, -37.8136] },
+      "properties": { "name": "Melbourne", "population": 5078000 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [153.0281, -27.4679] },
+      "properties": { "name": "Brisbane", "population": 2560000 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [115.8605, -31.9505] },
+      "properties": { "name": "Perth", "population": 2085000 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [138.6007, -34.9285] },
+      "properties": { "name": "Adelaide", "population": 1376000 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [149.1300, -35.2809] },
+      "properties": { "name": "Canberra", "population": 462000 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [147.3272, -42.8821] },
+      "properties": { "name": "Hobart", "population": 240000 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [130.8456, -12.4634] },
+      "properties": { "name": "Darwin", "population": 148000 }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [151.2093, -33.8688], [149.1300, -35.2809], [144.9631, -37.8136]
+        ]
+      },
+      "properties": { "name": "East Coast Route", "type": "route" }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [148.0, -34.0], [152.0, -34.0], [152.0, -28.0], [148.0, -28.0], [148.0, -34.0]
+        ]]
+      },
+      "properties": { "name": "NSW Region", "type": "region" }
+    }
+  ]
+}

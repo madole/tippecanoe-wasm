@@ -1,0 +1,32 @@
+diff --git a/thread.cpp b/thread.cpp
+index 9449655b..ae04e2bd 100644
+--- a/thread.cpp
++++ b/thread.cpp
+@@ -6,6 +6,21 @@
+ // the main thread instead for more straightforward profiling. (The threads will
+ // then still be created so they will be reaped, but they will immediately return.)
+ 
++#ifdef __EMSCRIPTEN__
++
++// In WASM without pthreads, run everything synchronously in the main thread.
++// We store the return value so pthread_join can retrieve it.
++static void *last_thread_result = NULL;
++
++int thread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void *), void *arg) {
++	(void) attr;
++	last_thread_result = start_routine(arg);
++	*thread = (pthread_t)1;  // dummy handle
++	return 0;
++}
++
++#else
++
+ static const char *no_threads = getenv("TIPPECANOE_NO_THREADS");
+ 
+ static void *do_nothing(void *arg) {
+@@ -20,3 +35,5 @@ int thread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_r
+ 		return pthread_create(thread, attr, start_routine, arg);
+ 	}
+ }
++
++#endif

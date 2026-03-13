@@ -1,0 +1,22 @@
+# Vendored source repos (cloned during build)
+zlib/
+libdeflate/
+sqlite/
+sysroot/
+
+# Tippecanoe source — large upstream repo, only track our patches via /patches
+tippecanoe/
+
+# Build artifacts
+*.o
+*.a
+
+# OS
+.DS_Store
+
+# IDE / tools
+.superpowers/
+.claude/
+
+# Node
+node_modules/
