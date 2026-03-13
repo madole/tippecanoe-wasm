@@ -178,6 +178,81 @@
   .map-empty.hidden { display: none; }
   .map-empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
   .map-empty-text { font-size: 14px; opacity: 0.6; }
+
+  /* Feature popup */
+  .ol-popup {
+    position: absolute;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0;
+    min-width: 200px;
+    max-width: 340px;
+    max-height: 300px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    font-size: 12px;
+    bottom: 12px;
+    left: -150px;
+    width: 300px;
+  }
+  .ol-popup::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-top: 8px solid var(--border);
+  }
+  .popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .popup-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 2px;
+  }
+  .popup-close:hover { color: var(--text-primary); }
+  .popup-body {
+    padding: 0;
+    overflow-y: auto;
+    max-height: 240px;
+  }
+  .popup-row {
+    display: flex;
+    padding: 5px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .popup-row:last-child { border-bottom: none; }
+  .popup-key {
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 11px;
+    min-width: 90px;
+    flex-shrink: 0;
+    padding-right: 8px;
+    word-break: break-all;
+  }
+  .popup-val {
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 11px;
+    word-break: break-word;
+  }
 </style>
 </head>
 <body>
@@ -264,6 +339,13 @@
       <div class="map-empty-text">Upload GeoJSON and generate tiles to preview</div>
     </div>
     <div id="map"></div>
+    <div id="popup" class="ol-popup" style="display:none">
+      <div class="popup-header">
+        <span id="popup-title">Properties</span>
+        <button class="popup-close" id="popup-close">&times;</button>
+      </div>
+      <div class="popup-body" id="popup-body"></div>
+    </div>
     <div class="status-bar">
       <span id="status-left">Ready</span>
       <span id="status-right"></span>
@@ -306,6 +388,96 @@
     controls: ol.control.defaults.defaults().extend([
       new ol.control.ScaleLine(),
     ]),
+  });
+
+  // ---- Feature popup ----
+  var popupEl = document.getElementById('popup');
+  var popupBody = document.getElementById('popup-body');
+  var popupTitle = document.getElementById('popup-title');
+  var popupOverlay = new ol.Overlay({
+    element: popupEl,
+    autoPan: { animation: { duration: 200 } },
+    positioning: 'bottom-center',
+    offset: [0, -8],
+  });
+  map.addOverlay(popupOverlay);
+
+  document.getElementById('popup-close').addEventListener('click', function() {
+    popupOverlay.setPosition(undefined);
+    popupEl.style.display = 'none';
+  });
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function buildPopupRows(props) {
+    var container = document.createDocumentFragment();
+    var keys = Object.keys(props).sort();
+    var hasRows = false;
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      if (key === 'geometry') continue;
+      hasRows = true;
+      var val = props[key];
+      if (val === null || val === undefined) val = '';
+
+      var row = document.createElement('div');
+      row.className = 'popup-row';
+      var keyEl = document.createElement('div');
+      keyEl.className = 'popup-key';
+      keyEl.textContent = key;
+      var valEl = document.createElement('div');
+      valEl.className = 'popup-val';
+      valEl.textContent = String(val);
+      row.appendChild(keyEl);
+      row.appendChild(valEl);
+      container.appendChild(row);
+    }
+    if (!hasRows) {
+      var empty = document.createElement('div');
+      empty.className = 'popup-row';
+      var emptyVal = document.createElement('div');
+      emptyVal.className = 'popup-val';
+      emptyVal.style.color = 'var(--text-muted)';
+      emptyVal.textContent = 'No properties';
+      empty.appendChild(emptyVal);
+      container.appendChild(empty);
+    }
+    return container;
+  }
+
+  map.on('click', function(evt) {
+    var hit = false;
+    map.forEachFeatureAtPixel(evt.pixel, function(feature) {
+      if (hit) return;
+      hit = true;
+
+      var props = feature.getProperties();
+      var geomType = '';
+      if (props.geometry && props.geometry.getType) {
+        geomType = props.geometry.getType();
+      }
+
+      var layerName = feature.get('layer') || '';
+      popupTitle.textContent = layerName ? layerName + (geomType ? ' (' + geomType + ')' : '') : 'Properties';
+      popupBody.textContent = '';
+      popupBody.appendChild(buildPopupRows(props));
+      popupEl.style.display = '';
+      popupOverlay.setPosition(evt.coordinate);
+    }, { hitTolerance: 4 });
+
+    if (!hit) {
+      popupOverlay.setPosition(undefined);
+      popupEl.style.display = 'none';
+    }
+  });
+
+  map.on('pointermove', function(evt) {
+    var hit = map.hasFeatureAtPixel(evt.pixel, { hitTolerance: 4 });
+    map.getTargetElement().style.cursor = hit ? 'pointer' : '';
   });
 
   // ---- DOM refs ----
